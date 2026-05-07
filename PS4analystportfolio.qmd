@@ -719,7 +719,7 @@ Gemini helped me identify variable codes, troubleshoot survey design setup, and 
 
 \footnotesize
 
-Arab Barometer. (2024). *Arab Barometer Wave VIII* [Data set]. https://www.arabbarometer.org/
+Arab Barometer. (2024). *Arab Barometer Wave VIII* [Data set]. [https://www.arabbarometer.org/surveys/arab-barometer-wave-viii/#data_sets](https://www.arabbarometer.org/surveys/arab-barometer-wave-viii/#data_sets)
 
 R Core Team. (2024). *R: A Language and Environment for Statistical Computing*. R Foundation for Statistical Computing.
 
