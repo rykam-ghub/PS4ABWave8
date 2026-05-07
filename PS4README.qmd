@@ -1,0 +1,98 @@
+---
+title: "PS4README"
+format: pdf
+editor: visual
+---
+# Exit vs Voice: How Arab Youth Respond to Economic Crisis
+
+A survey-weighted statistical analysis of how young people (ages 18–35) in eight Arab countries respond to economic stress — by emigrating ("exit") or protesting ("voice") — using Arab Barometer Wave VIII data. Built in R + Quarto, output as a Beamer presentation.
+
+## The research question
+
+When economies fail, do youth leave or do they fight to change things? The puzzle: countries facing comparable economic stress show very different behavioral responses. This project tests whether those differences are statistically real and asks what predicts each response.
+
+## Findings at a glance
+
+Three distinct response patterns emerge across the eight countries:
+
+1. **High exit, low voice** — Tunisia, Kuwait (individual escape strategy)
+2. **Low exit, high voice** — Iraq, Mauritania (collective action)
+3. **Paralysis** — Jordan, Palestine (neither response feels viable)
+
+The mechanisms differ: emigration tracks **personal** economic hardship ("my situation is bad — I need to leave"), while protest tracks **national** economic failure ("our country is failing — we need to demand change"). Gender and wealth shape who can actually exercise the exit option, with significant cross-country variation in those access barriers.
+
+## Data source
+
+| File | Source |
+|---|---|
+| `ArabBarometer_WaveVIII_English_v3.csv` | [Arab Barometer Wave VIII](https://www.arabbarometer.org/) (Sep 2023 – Jul 2024) |
+
+Eight countries: Iraq, Jordan, Kuwait, Lebanon, Mauritania, Morocco, Palestine, Tunisia. Sample restricted to respondents aged 18–35 following the World Bank youth definition.
+
+## Methodology
+
+- **Survey weighting** throughout — population estimates use the Arab Barometer `WT` weights so results reflect populations rather than respondent counts.
+- **Hypothesis testing** — chi-squared tests verify cross-country emigration differences are not random noise; t-tests verify the gender gap.
+- **Survey-weighted logistic regression** (`svyglm` with `quasibinomial` family) for both outcomes, with predictors covering national economic perception, personal economic situation, age, gender, and urban/rural location.
+- **Multilevel framing** — country-level aggregates (national pessimism, exit rates, government trust) are joined back to individual records to capture the nested structure of respondents within countries.
+
+## Tech stack
+
+- **R** + **Quarto** rendering to a **Beamer PDF** slide deck (16:9, Madrid theme)
+- **tidyverse** — wrangling, ggplot2 visualizations
+- **survey** — survey-weighted regression and design objects
+- **broom** — tidying regression output for plotting
+- **knitr** + **kableExtra** — formatted tables for the slide deck
+- **ggrepel** — non-overlapping country labels in scatter plots
+
+Install all R packages in one shot:
+
+```r
+install.packages(c(
+  "tidyverse", "knitr", "kableExtra", "broom", "survey", "ggrepel"
+))
+```
+
+## How to render
+
+This project outputs a **PDF slide deck via Beamer**, which means it requires a working LaTeX installation. The simplest path on a clean machine:
+
+```r
+# One-time LaTeX install via Quarto (lightweight TinyTeX distribution)
+quarto::quarto_install_tinytex()
+```
+
+Then render from RStudio with **Render** (⇧⌘K / Ctrl+Shift+K), or from the terminal:
+
+```bash
+quarto render PS4analystporfolio.qmd
+```
+
+The `ArabBarometer_WaveVIII_English_v3.csv` file must sit in the project root — the `.qmd` reads it with a relative path. Output is `PS4analystporfolio.pdf`.
+
+## File tree
+
+```
+.
+├── PS4analystporfolio.qmd                  # main Quarto source (Beamer presentation)
+├── PS4analystporfolio.pdf                  # rendered slide deck (after quarto render)
+├── README.md                               # this file
+├── ArabBarometer_WaveVIII_English_v3.csv   # source data
+└── *.Rproj                                 # RStudio project file (recommended)
+```
+
+## Limitations
+
+- **Cross-sectional snapshot.** Wave VIII is a single point in time — patterns identified here are associations, not causal effects.
+- **Eight countries** is enough to detect within-country individual-level effects but is a small N for between-country claims; cross-country comparisons should be read as suggestive.
+- **Sample design simplification.** The `svydesign()` call stratifies by country but treats individuals as independently sampled (`ids = ~1`); Arab Barometer's actual design includes primary sampling unit clustering, so reported standard errors are likely somewhat optimistic.
+- **Costs of exit are unobserved.** The data captures emigration *intent*, not feasibility — visa access, network availability, and destination-country immigration policy all gate whether stated intent translates to action.
+- **"Neither" responses** on the personal economy question were coded as missing rather than treated as a third category, which loses some respondents from the wealth-related models.
+
+## Acknowledgments
+
+Google Gemini assisted with identifying Arab Barometer variable codes, troubleshooting the `survey` package design setup, and debugging code errors. All research design, variable construction decisions, interpretation, and analytical conclusions are the author's own.
+
+## Author
+
+R. Kam · American University, School of International Service

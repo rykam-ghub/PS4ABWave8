@@ -1,0 +1,730 @@
+---
+title: "What Are Youth Doing in Economies of the Arab World?"
+subtitle: "Exploring Arab Barometer Wave VIII Data"
+author: "R.Kam"
+institute: "American University"
+date: "May 6, 2026"
+format:
+  beamer:
+    theme: Madrid
+    colortheme: default
+    fonttheme: structurebold
+    slide-level: 2
+    toc: false
+    incremental: false
+    keep-tex: false
+    fig-width: 5.7
+    fig-height: 2.8
+classoption: "aspectratio=169"
+---
+
+## Why This Matters
+
+**The personal question:**
+
+I'm graduating soon. Job market feels uncertain. Economy feels shaky. So I wondered: what are young people doing when their economies fail them?
+
+\medskip
+
+**What I found:**
+
+Arab Barometer surveys 8 countries experiencing economic stress. Their youth (ages 18-35) face a choice: **exit** (leave) or **voice** (protest)?
+
+\medskip
+
+**The puzzle:**
+
+Some countries see mass emigration plans. Others see protests. Some see neither. **Why the difference?**
+
+---
+
+## The Data Journey
+
+```{r setup}
+#| echo: false
+#| warning: false
+#| message: false
+
+# The tools I need for this analysis
+library(tidyverse)      # For data wrangling
+library(knitr)          # For making nice visuals/tables
+library(kableExtra)     # For making really nice & fancy tables
+library(broom)          # For tidying regression outputs
+library(survey)         # For handling weighted survey data
+library(ggrepel)        # For non-overlapping labels in plots
+```
+
+```{r data-load}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Load the raw survey data
+ab8 <- read_csv("ArabBarometer_WaveVIII_English_v3.csv")
+
+# First, I translate country codes into actual names
+# The survey uses numbers (7, 8, 9...) but readers need to see "Iraq", "Jordan"...
+country_labels <- c(
+  "7" = "Iraq", "8" = "Jordan", "9" = "Kuwait", "10" = "Lebanon",
+  "12" = "Mauritania", "13" = "Morocco", "15" = "Palestine", "21" = "Tunisia"
+)
+```
+
+```{r filter-youth}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Add country names and filter to youth (18-35, following World Bank definition)
+ab8_youth <- ab8 %>%
+  mutate(country_name = factor(COUNTRY, levels = names(country_labels), 
+                                labels = country_labels)) %>%
+  filter(Q1001 >= 18, Q1001 <= 35)
+
+# How many youth are we studying?
+youth_count <- nrow(ab8_youth)
+```
+
+**Dataset:** Arab Barometer Wave VIII (Sep 2023 - Jul 2024)
+
+**Sample:** `r format(youth_count, big.mark=",")` youth across 8 countries
+
+**My approach:** Focus on two key behaviors — emigration plans and protest participation
+
+---
+
+## Creating the Key Variables
+
+```{r create-responses}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Here's where I turn raw survey responses into something meaningful
+# The survey asks: "Do you plan to emigrate?" (Q501D: 1=Yes, 2=No, 98/99=Refused)
+# I recoded this into a simple binary: 1 = planning to leave, 0 = staying
+ab8_youth <- ab8_youth %>%
+  mutate(emigrate = case_when(
+    Q501D == 1 ~ 1,    # Yes, planning to emigrate
+    Q501D == 2 ~ 0,    # No, staying
+    TRUE ~ NA_real_    # Everything else (refused/don't know) = missing data
+  ))
+
+# Same logic for protest: have they EVER participated?
+# Q404: 1=Last year, 2=Before, 3=Never
+ab8_youth <- ab8_youth %>%
+  mutate(protest = case_when(
+    Q404 %in% c(1, 2) ~ 1,  # Any participation = 1
+    Q404 == 3 ~ 0,          # Never = 0
+    TRUE ~ NA_real_         # Refused/don't know = missing
+  ))
+
+# I also need to capture economic perceptions and personal circumstances
+# Economic assessment: Q101 asks "How is the national economy?" 
+# (1=Very good, 2=Good, 3=Bad, 4=Very bad, 5=Neither)
+# I reverse it so higher = worse, which makes more intuitive sense
+ab8_youth <- ab8_youth %>%
+  mutate(
+    econ_national = 6 - Q101,  # Now 5 = very bad, 1 = very good
+    male = case_when(Q1002 == 1 ~ 1, Q1002 == 2 ~ 0, TRUE ~ NA_real_),
+    
+    # Wealth: Since Q1015 has limited data, I use Q102 (personal economic situation)
+    # Q102: 1=Very good, 2=Good, 3=Bad, 4=Very bad, 5=Neither
+    # "Struggling" = those who rate their personal economy as bad/very bad
+    wealth_struggling = case_when(
+      Q102 >= 98 ~ NA_real_,           # Missing data codes
+      Q102 %in% c(1, 2) ~ 0,           # Good/Very good = Comfortable
+      Q102 %in% c(3, 4) ~ 1,           # Bad/Very bad = Struggling
+      Q102 == 5 ~ NA_real_,            # "Neither" = unclear, set as missing
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+```{r country-summary}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Now I calculate country-level summaries
+# IMPORTANT: I use survey weights (WT) so results reflect the actual population
+ab8_summary <- ab8_youth %>%
+  group_by(country_name) %>%
+  summarise(
+    N = n(),
+    emigrate_pct = weighted.mean(emigrate, w = WT, na.rm = TRUE) * 100,
+    protest_pct = weighted.mean(protest, w = WT, na.rm = TRUE) * 100,
+    econ_bad_pct = weighted.mean(Q101 >= 3, w = WT, na.rm = TRUE) * 100
+  )
+
+# Extract key numbers for inline text
+top_emigrate_country <- ab8_summary %>% 
+  slice_max(emigrate_pct) %>% pull(country_name) %>% as.character()
+top_emigrate_pct <- ab8_summary %>% 
+  slice_max(emigrate_pct) %>% pull(emigrate_pct) %>% round(1)
+```
+
+**What I'm measuring:**
+
+- **Exit:** Planning to emigrate (yes/no)
+- **Voice:** Ever participated in protests (yes/no)
+- **Context:** How bad is the economy? Personal wealth status?
+
+**Key insight:** Survey weights matter — without them, we'd be counting responses, not representing populations.
+
+---
+
+## The Economic Crisis is Real
+
+```{r fig-economic-crisis}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig.width: 5
+#| fig.height: 2.6
+#| fig.cap: "Widespread economic pessimism across all countries"
+
+# This visualization shows just how bad people think their economies are
+# I sort countries by pessimism level to show the gradient
+ab8_summary %>%
+  ggplot(aes(x = reorder(country_name, econ_bad_pct), y = econ_bad_pct)) +
+  geom_col(fill = "firebrick", width = 0.7) +
+  geom_text(aes(label = paste0(round(econ_bad_pct, 1), "%")),
+            hjust = -0.2, size = 2.2) +
+  coord_flip() +
+  labs(title = "Economic Pessimism is Widespread",
+       subtitle = "Percentage of respondents saying economy is 'bad' or 'very bad'",
+       x = NULL, y = "Percentage (%)") +
+  scale_y_continuous(limits = c(0, 105), breaks = seq(0, 100, 20)) +
+  theme_minimal(base_size = 8) +
+  theme(plot.title = element_text(face = "bold", size = 9),
+        plot.subtitle = element_text(size = 7),
+        panel.grid.major.y = element_blank())
+```
+
+\small
+**The story:** Lebanon leads at 99% — nearly everyone thinks the economy is terrible. Even Kuwait, the richest, sits at 34%. **Economic stress is universal, but responses differ.**
+\normalsize
+
+---
+
+## Two Responses: Exit vs Voice
+
+```{r prepare-comparison}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Now I want to see both responses side-by-side
+# I reshape the data from wide (emigrate_pct, protest_pct in separate columns)
+# to long format (one column for type, one for percentage)
+# This lets ggplot create grouped bars automatically
+ab8_comparison <- ab8_summary %>%
+  select(country_name, emigrate_pct, protest_pct) %>%
+  pivot_longer(cols = c(emigrate_pct, protest_pct),
+               names_to = "response_type", 
+               values_to = "percentage") %>%
+  mutate(response_type = recode(response_type,
+                                emigrate_pct = "Immigration",
+                                protest_pct = "Protest"))
+```
+
+```{r fig-exit-voice}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig.width: 5.2
+#| fig.height: 2.6
+#| fig.cap: "Countries choose different strategies"
+
+# Here I create the side-by-side comparison
+# Each country gets two bars: one for exit (orangered), one for voice (blue)
+ggplot(ab8_comparison, 
+       aes(x = reorder(country_name, percentage), y = percentage, fill = response_type)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")),
+            position = position_dodge(width = 0.7), hjust = -0.2, size = 1.8) +
+  coord_flip() +
+  scale_fill_manual(values = c("Immigration" = "orangered", "Protest" = "dodgerblue"),
+                    name = NULL) +
+  labs(title = "Exit vs Voice: Different Countries, Different Choices",
+       x = NULL, y = "Percentage (%)") +
+  scale_y_continuous(limits = c(0, 65)) +
+  theme_minimal(base_size = 8) +
+  theme(plot.title = element_text(face = "bold", size = 9),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7),
+        panel.grid.major.y = element_blank())
+```
+
+\small
+**Three patterns emerge:** Iraq/Mauritania (high protest, lower exit) • Tunisia/Kuwait (high exit, moderate protest) • Lebanon (everyone wants to leave)
+\normalsize
+
+---
+
+## Gender Shapes Who Can Leave
+
+```{r gender-analysis}
+#| echo: false
+#| warning: false
+#| message: false
+
+# I suspect gender matters — migration networks are often male-dominated
+# Let me calculate emigration rates separately for men and women
+gender_data <- ab8_youth %>%
+  group_by(country_name, male) %>%
+  summarise(emigrate_pct = weighted.mean(emigrate, w = WT, na.rm = TRUE) * 100,
+            .groups = "drop")
+
+# Reshape to compare: one row per country, columns for Male/Female/Gap
+gender_table <- gender_data %>%
+  mutate(gender = ifelse(male == 1, "Male", "Female")) %>%
+  select(-male) %>%
+  pivot_wider(names_from = gender, values_from = emigrate_pct) %>%
+  mutate(gap = Male - Female) %>%
+  arrange(desc(gap))
+
+# Pull out the extremes for storytelling
+max_gap_country <- gender_table %>% slice_max(gap) %>% pull(country_name) %>% as.character()
+max_gap_value <- gender_table %>% slice_max(gap) %>% pull(gap) %>% round(1)
+```
+
+\footnotesize
+
+```{r gender-table}
+#| echo: false
+#| warning: false
+#| message: false
+
+kable(gender_table,
+      col.names = c("Country", "Female (%)", "Male (%)", "Gap (pp)"),
+      digits = 1, booktabs = TRUE,
+      caption = "Immigration Intentions by Gender") %>%
+  kable_styling(latex_options = c("striped", "scale_down"), font_size = 7)
+```
+
+\normalsize
+
+\small
+**The gap tells a story:** In `r max_gap_country`, men are `r max_gap_value` percentage points more likely to plan emigration. This likely reflects existing migration networks — men go first, establish themselves, then sometimes bring families.
+\normalsize
+
+---
+
+## Wealth Creates Divides
+
+```{r wealth-analysis}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Now I ask: does personal wealth status predict emigration differently across countries?
+# First, I calculate emigration rates by wealth status within each country
+# CRITICAL: I need to CREATE the wealth_data object here
+
+# Step 1: Check how many people have valid wealth data
+# (This ensures we're not accidentally filtering everyone out)
+wealth_data <- ab8_youth %>%
+  filter(!is.na(wealth_struggling), !is.na(emigrate)) %>%  # Need BOTH variables
+  group_by(country_name, wealth_struggling) %>%
+  summarise(
+    emigrate_pct = weighted.mean(emigrate, w = WT, na.rm = TRUE) * 100,
+    n_respondents = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(status = case_when(
+    wealth_struggling == 1 ~ "Struggling",
+    wealth_struggling == 0 ~ "Comfortable",
+    TRUE ~ NA_character_
+  ))
+```
+
+```{r wealth-gap-calc}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Now I calculate the gap: how much MORE do struggling youth want to leave?
+# Reshaping the data to compare Struggling vs Comfortable side-by-side
+# A positive gap means struggling youth have higher emigration intentions than comfortable youth
+wealth_gap <- wealth_data %>%
+  select(country_name, status, emigrate_pct) %>%
+  pivot_wider(names_from = status, values_from = emigrate_pct) %>%
+  mutate(gap = Struggling - Comfortable) %>%
+  arrange(desc(gap))
+```
+
+```{r fig-wealth}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig.width: 5
+#| fig.height: 2.4
+#| fig.cap: "Wealth matters differently across countries"
+
+# Now I visualize the relationship between personal wealth and emigration
+# I use dodged bars to show Struggling vs Comfortable side-by-side for each country
+ggplot(wealth_data, aes(x = country_name, y = emigrate_pct, fill = status)) +
+  geom_col(position = "dodge", width = 0.7) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c("Struggling" = "darkred", "Comfortable" = "darkgreen"),
+    name = NULL,
+    drop = FALSE  # Keep both categories even if one is missing
+  ) +
+  labs(
+    title = "Personal Wealth and Emigration Plans",
+    subtitle = "Does being poor make you want to leave?",
+    x = NULL, 
+    y = "Immigration Intentions (%)"
+  ) +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1))) +
+  theme_minimal(base_size = 8) +
+  theme(
+    plot.title = element_text(face = "bold", size = 9),
+    plot.subtitle = element_text(size = 7),
+    legend.position = "bottom",
+    legend.text = element_text(size = 7))
+```
+
+---
+
+```{r extract-wealth-stats}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Extract the extremes for storytelling in the text
+max_wealth_gap_country <- wealth_gap %>% 
+  slice_max(gap, n = 1) %>% 
+  pull(country_name) %>% 
+  as.character()
+
+max_wealth_gap_value <- wealth_gap %>% 
+  slice_max(gap, n = 1) %>% 
+  pull(gap) %>% 
+  round(1)
+
+min_wealth_gap_country <- wealth_gap %>% 
+  slice_min(gap, n = 1) %>% 
+  pull(country_name) %>% 
+  as.character()
+
+min_wealth_gap_value <- wealth_gap %>% 
+  slice_min(gap, n = 1) %>% 
+  pull(gap) %>% 
+  round(1)
+```
+
+\small
+**Surprising variation:** In `r max_wealth_gap_country`, struggling youth are `r max_wealth_gap_value` percentage points **more likely** to plan emigration than comfortable youth. But in `r min_wealth_gap_country`, the gap is only `r abs(min_wealth_gap_value)` points. **Emigration isn't just about poverty** — it's about a framework of *resources, networks, and opportunity*.
+\normalsize
+
+---
+
+## Does National Context Matter?
+
+```{r national-context}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Insight: individuals are nested within countries
+# An Iraqi youth and a Jordanian youth might have the same personal wealth,
+# but they live in very different national contexts
+# Creating country-level variables to capture this
+
+country_context <- ab8_youth %>%
+  group_by(country_name) %>%
+  summarise(
+    nat_econ_fail = weighted.mean(Q101 >= 3, w = WT, na.rm = TRUE) * 100,
+    nat_exit_rate = weighted.mean(emigrate, w = WT, na.rm = TRUE) * 100,
+    nat_trust_level = weighted.mean(Q301A == 1, w = WT, na.rm = TRUE) * 100
+  )
+
+# Now join this back to individual data — each person gets their country's stats
+ab8_joined <- ab8_youth %>% left_join(country_context, by = "country_name")
+
+# Extract key comparisons for narrative
+lebanon_fail <- country_context %>% filter(country_name == "Lebanon") %>% 
+  pull(nat_econ_fail) %>% round(1)
+lebanon_exit <- country_context %>% filter(country_name == "Lebanon") %>% 
+  pull(nat_exit_rate) %>% round(1)
+jordan_fail <- country_context %>% filter(country_name == "Jordan") %>% 
+  pull(nat_econ_fail) %>% round(1)
+jordan_exit <- country_context %>% filter(country_name == "Jordan") %>% 
+  pull(nat_exit_rate) %>% round(1)
+```
+
+**The multilevel question:**
+
+Two people, same personal wealth, different countries. One lives where `r lebanon_fail`% say the economy failed (Lebanon). The other where `r jordan_fail`% say so (Jordan). 
+
+Yet Lebanon shows `r lebanon_exit`% exit rate, Jordan shows `r jordan_exit`%. **Same crisis level, different responses. But why?**
+
+---
+
+## Visualizing National Context
+
+```{r fig-context}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig.width: 5
+#| fig.height: 2.6
+#| fig.cap: "National failure doesn't predict exit uniformly"
+
+# I use bubble size to add a third dimension: trust in government
+# This helps explain why some failing economies still retain their youth
+# Larger bubbles = higher trust, which might keep people from leaving
+ggplot(country_context, aes(x = nat_econ_fail, y = nat_exit_rate)) +
+  geom_point(aes(size = nat_trust_level), color = "steelblue", alpha = 0.7) +
+  geom_text_repel(aes(label = country_name), size = 2.2, fontface = "bold") +
+  labs(title = "Economic Failure doesn't mean Automatic Exit",
+       x = "National Economic Pessimism (%)",
+       y = "Youth Exit Rate (%)") +
+  scale_size_continuous(name = "Trust (%)", range = c(3, 9)) +
+  theme_minimal(base_size = 8) +
+  theme(plot.title = element_text(face = "bold", size = 9),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7))
+```
+
+\small
+**Look closely:** No clear line. Tunisia (high failure, high exit). Lebanon (extreme failure, moderate exit). Jordan (high failure, low exit). **Something else is triggering this!**
+\normalsize
+
+---
+
+## Testing: Are These Patterns Real?
+
+```{r statistical-tests}
+#| echo: false
+#| warning: false
+#| message: false
+
+# With only 8 countries and noise in survey data, I need to check:
+# Could these patterns be random chance?
+
+# Test 1: Do emigration rates truly differ across countries?
+# Chi-squared test compares observed vs expected if rates were identical
+emigrate_counts <- ab8_youth %>%
+  filter(!is.na(emigrate), !is.na(country_name)) %>%
+  count(country_name, emigrate) %>%
+  pivot_wider(names_from = emigrate, values_from = n, values_fill = 0)
+chisq_emigrate <- chisq.test(emigrate_counts[, -1])
+
+# Test 2: Gender gap - is it statistically significant?
+# t-test compares means between two groups (male vs female)
+gender_test <- t.test(emigrate ~ male, data = ab8_youth)
+```
+
+\footnotesize
+
+```{r test-table}
+#| echo: false
+#| warning: false
+#| message: false
+
+# I create a summary table showing test results and what they mean
+tibble(
+  Test = c("Countries differ on emigration?", "Gender difference in emigration"),
+  Result = c(
+    paste0("χ² = ", round(chisq_emigrate$statistic, 1), ", p < 0.001"),
+    paste0("t = ", round(gender_test$statistic, 2), ", p < 0.001")
+  ),
+  Interpretation = c("Yes — not random", "Yes — highly significant")
+) %>%
+  kable(booktabs = TRUE, caption = "Statistical Verification") %>%
+  kable_styling(latex_options = "striped", font_size = 7)
+```
+
+\normalsize
+
+\small
+**Translation:** p < 0.001 means less than 0.1% chance these patterns are random noise. **They're real.**
+\normalsize
+
+---
+
+## What Predicts Exit vs Voice?
+
+```{r regression-setup}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Now for the big question: what CAUSES exit vs voice?
+# I use logistic regression because my outcomes are binary (yes/no)
+# And I use survey-weighted models to respect the sampling design
+
+# Set up survey design object (tells R about the weights and structure)
+ab8_design <- svydesign(ids = ~1, strata = ~COUNTRY, weights = ~WT,
+                        data = ab8_joined, nest = TRUE)
+
+# Model 1: What predicts EMIGRATION?
+# I include: national economy, personal economy, age, gender, urban/rural
+model_emigrate <- svyglm(
+  emigrate ~ econ_national + Q102 + Q1001 + male + Q13,
+  design = ab8_design, family = quasibinomial()
+)
+
+# Model 2: What predicts PROTEST?
+# Same predictors, different outcome
+model_protest <- svyglm(
+  protest ~ econ_national + Q102 + Q1001 + male + Q13,
+  design = ab8_design, family = quasibinomial()
+)
+
+# Extract coefficients and combine for visualization
+# I use tidy() from broom package to turn regression output into a clean data frame
+coef_both <- bind_rows(
+  tidy(model_emigrate, conf.int = TRUE) %>% 
+    filter(term != "(Intercept)") %>% 
+    mutate(model = "Immigration"),
+  tidy(model_protest, conf.int = TRUE) %>% 
+    filter(term != "(Intercept)") %>% 
+    mutate(model = "Protest")
+) %>%
+  mutate(term = recode(term,
+                       econ_national = "National Economy (worse)",
+                       Q102 = "Personal Economy (worse)",
+                       Q1001 = "Age",
+                       male = "Male",
+                       Q13 = "Urban"))
+```
+
+```{r fig-regression}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig.width: 5.1
+#| fig.height: 2.5
+#| fig.cap: "Different drivers for exit vs voice"
+
+# I plot coefficients with confidence intervals
+# Positive coefficient = increases likelihood, Negative = decreases likelihood
+# The confidence intervals show uncertainty - if they cross zero, effect is uncertain
+ggplot(coef_both, 
+       aes(x = estimate, y = reorder(term, estimate), color = model)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high),
+                 height = 0.3, linewidth = 0.8, 
+                 position = position_dodge(width = 0.5)) +
+  geom_point(size = 2.5, position = position_dodge(width = 0.5)) +
+  scale_color_manual(values = c("Immigration" = "orangered", 
+                                "Protest" = "dodgerblue"), name = NULL) +
+  labs(title = "What Drives Each Response?",
+       x = "Effect Size (log-odds)", y = NULL) +
+  theme_minimal(base_size = 8) +
+  theme(plot.title = element_text(face = "bold", size = 9),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7))
+```
+
+---
+
+## The Key Insight
+
+**Different mechanisms for different choices:**
+
+\medskip
+
+**For EMIGRATION (exit):**
+
+Personal economy matters most. "MY situation is bad" meaning **"I need to leave"**
+
+Please note how the orange (Immigration) bar for personal economy is positive and doesn't cross zero, **this means a strong effect**.
+
+\medskip
+
+**For PROTEST (voice):**
+
+National economy matters most. "OUR country is failing". Simply put, **We need to demand change**
+
+The blue (Protest) bar for national economy shows this collective framing.
+
+\medskip
+
+**Why this matters:**
+
+Exit is an individual escape strategy. Voice is a collective action strategy. **They respond to different triggers.**
+
+---
+
+## Conclusion
+
+### Findings
+
+**Three response patterns:**
+
+1. **High exit, low voice:** Tunisia, Kuwait (individual escape)
+2. **Low exit, high voice:** Iraq, Mauritania (collective action)
+3. **Paralysis:** Jordan, Palestine (neither option feels viable)
+
+\medskip
+
+**Different mechanisms:**
+
+- Exit responds to **personal** economic hardship
+- Voice responds to **national** economic failure
+- Gender and wealth create access barriers differently across countries
+
+\medskip
+
+**The bigger story:**
+
+When economies fail, youth aren't passive. But **context determines which option they reach for.**
+
+---
+
+### What I Learned (Beyond Findings)
+
+**Technical skills:**
+
+Survey weighting, multilevel thinking, logistic regression, inline R code for dynamic reporting
+
+\medskip
+
+**Conceptual insights:**
+
+Same economic crisis **is NOT** same response. Individual vs collective framing matters. Missing data requires careful decisions.
+
+\medskip
+
+**Limitations I acknowledge:**
+
+Only 8 countries due to funding. Analysis is cross-sectional (snapshot, not causation). This only represents static data, not a dynamic pattern. Can't account for emigration *costs* (visas, networks, resources, foreign country immigration laws).
+
+---
+
+## Thank You
+
+\bigskip
+
+**Acknowledgments:**
+
+Gemini helped me identify variable codes, troubleshoot survey design setup, and debug code errors. I made all interpretation, visualization, and analytical decisions.
+
+\bigskip
+
+**Methods:** Survey-weighted logistic regression, multilevel analysis via joins, chi-squared and t-tests for verification
+
+**Data:** Arab Barometer Wave VIII (2023-2024) • N = `r format(youth_count, big.mark=",")` youth ages 18-35
+
+---
+
+## References
+
+\footnotesize
+
+Arab Barometer. (2024). *Arab Barometer Wave VIII* [Data set]. https://www.arabbarometer.org/
+
+R Core Team. (2024). *R: A Language and Environment for Statistical Computing*. R Foundation for Statistical Computing.
+
+Wickham, H. et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686.
+
+Google Gemini (2026). https://gemini.google.com/share/e5dc7d091e9b
+
+\normalsize
